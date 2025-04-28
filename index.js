@@ -1,4 +1,3 @@
-// file: index.js
 import { Telegraf, Markup } from 'telegraf';
 import { config } from 'dotenv';
 import { db } from './firebase.js';
@@ -10,9 +9,7 @@ keepAlive();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ✅ তোমার Telegram Admin ID
 const ADMIN_ID = '6243881362';
-
 const userSession = new Map();
 
 // Start Command
@@ -20,7 +17,7 @@ bot.start(async (ctx) => {
   await sendMainMenu(ctx);
 });
 
-// Main Menu Function
+// Main Menu
 async function sendMainMenu(ctx) {
   await ctx.replyWithChatAction('typing');
   setTimeout(async () => {
@@ -117,7 +114,6 @@ async function showOrderHistory(ctx) {
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const session = userSession.get(userId);
-
   if (!session) return;
 
   const text = ctx.message.text;
@@ -125,25 +121,34 @@ bot.on('text', async (ctx) => {
   if (session.step === 'waiting_for_name') {
     session.name = text;
     session.step = 'waiting_for_email';
-    await ctx.reply('📧 Please enter your *Email*:', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
+    await ctx.reply('📧 Please enter your *Email* (Must be Gmail):', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
   } else if (session.step === 'waiting_for_email') {
+    if (!text.includes('@gmail.com')) {
+      return ctx.reply('❌ *Invalid Email.* Please use a valid Gmail address ending with @gmail.com.', { parse_mode: 'Markdown' });
+    }
     session.email = text;
     session.step = 'waiting_for_telegram';
-    await ctx.reply('💬 Please enter your *Telegram Number*:', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
+    await ctx.reply('💬 Please enter your *Telegram Number* (11 Digits):', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
   } else if (session.step === 'waiting_for_telegram') {
+    if (!/^\d{11}$/.test(text)) {
+      return ctx.reply('❌ *Invalid Telegram Number.* Please enter exactly 11 digits.', { parse_mode: 'Markdown' });
+    }
     session.telegram = text;
     session.step = 'waiting_for_whatsapp';
-    await ctx.reply('📱 Please enter your *WhatsApp Number*:', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
+    await ctx.reply('📱 Please enter your *WhatsApp Number* (11 Digits):', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
   } else if (session.step === 'waiting_for_whatsapp') {
+    if (!/^\d{11}$/.test(text)) {
+      return ctx.reply('❌ *Invalid WhatsApp Number.* Please enter exactly 11 digits.', { parse_mode: 'Markdown' });
+    }
     session.whatsapp = text;
     session.step = 'waiting_for_payment';
-    await ctx.reply(`💵 *Choose Payment Method:*\n\n*Send the exact amount first!*\n\n- 2500৳ / 3500৳ / 5000৳ / 7000৳ অথবা আপনার প্রোমোশন প্যাক অনুযায়ী টাকা পাঠান।\n\n➡️ *Send Money Number:*\n\n*বিকাশ*: 01318645435\n*নগদ*: 01855966005\n*রকেট*: 01829261192`, {
+    await ctx.reply(`💵 *Choose Payment Method:*\n\n*Send exact amount first!*\n\n➡️ *Payment Numbers:*`, {
       parse_mode: 'Markdown',
-      ...Markup.keyboard([
-        ['Bkash', 'Nagad'],
-        ['Rocket', 'Cash on Delivery'],
-        ['Back', 'Cancel']
-      ]).resize()
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📱 Bkash: 01318645435', 'copy_bkash')],
+        [Markup.button.callback('📱 Nagad: 01855966005', 'copy_nagad')],
+        [Markup.button.callback('📱 Rocket: 01829261192', 'copy_rocket')]
+      ])
     });
   } else if (session.step === 'waiting_for_payment') {
     if (['Bkash', 'Nagad', 'Rocket', 'Cash on Delivery'].includes(text)) {
@@ -158,13 +163,24 @@ bot.on('text', async (ctx) => {
         await ctx.reply('🧾 Please enter your *Transaction ID* after sending payment:', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
       }
     } else {
-      await ctx.reply('❌ Invalid Payment Method. Please select from the keyboard.');
+      await ctx.reply('❌ Invalid Payment Method. Please select from the options.');
     }
   } else if (session.step === 'waiting_for_transaction') {
     session.transactionId = text;
     session.paymentStatus = 'Paid';
     await saveOrder(ctx, session);
   }
+});
+
+// Payment Number Copy Handling
+bot.action('copy_bkash', async (ctx) => {
+  await ctx.answerCbQuery('Bkash Number Copied: 01318645435', { show_alert: true });
+});
+bot.action('copy_nagad', async (ctx) => {
+  await ctx.answerCbQuery('Nagad Number Copied: 01855966005', { show_alert: true });
+});
+bot.action('copy_rocket', async (ctx) => {
+  await ctx.answerCbQuery('Rocket Number Copied: 01829261192', { show_alert: true });
 });
 
 // Save Order to Firestore
@@ -189,18 +205,15 @@ async function saveOrder(ctx, session) {
     ...Markup.removeKeyboard()
   });
 
-  // Notify Admin
   await bot.telegram.sendMessage(ADMIN_ID, `📥 *New Order Received!*\n\n👤 *Name:* ${session.name}\n📧 *Email:* ${session.email}\n💬 *Telegram:* ${session.telegram}\n📱 *WhatsApp:* ${session.whatsapp}\n🛒 *Order Type:* ${session.type}\n💵 *Payment Method:* ${session.paymentMethod}\n📋 *Transaction ID:* ${session.transactionId}\n⚡ *Payment Status:* ${session.paymentStatus}`, {
     parse_mode: 'Markdown'
   });
 
   userSession.delete(ctx.from.id);
-
-  // Go back to Main Menu
   setTimeout(() => {
     sendMainMenu(ctx);
   }, 1000);
 }
 
-// Launch Bot
+// Launch
 bot.launch();
