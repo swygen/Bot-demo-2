@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node src/bot.js",
+    "dev": "node src/keepAlive/keepAlive.js"
   },
   "dependencies": {
     "dotenv": "^16.0.3",
