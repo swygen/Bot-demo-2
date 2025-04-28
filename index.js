@@ -2,111 +2,107 @@ import { Telegraf, Markup } from 'telegraf';
 import { config } from 'dotenv';
 import { db } from './firebase.js';
 import { keepAlive } from './keepAlive.js';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 config();
+keepAlive();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// Keep the bot alive (for render hosting)
-keepAlive();
+// ✅ এখানে তোমার Admin Telegram User ID বসাও
+const ADMIN_ID = 'তোমার_টেলিগ্রাম_ইউজার_আইডি'; 
 
-// User session management
 const userSession = new Map();
 
 // Start Command
 bot.start(async (ctx) => {
   await ctx.replyWithChatAction('typing');
   setTimeout(async () => {
-    await ctx.reply(`✨ *Welcome to the Premium Tournament Service Bot!* ✨\n\nSelect an option from below:`, {
+    await ctx.reply(`✨ *Welcome to Premium Tournament Service Bot!* ✨\n\nPlease select an option:`, {
       parse_mode: 'Markdown',
       ...Markup.keyboard([
         ['📱 App Order', '🌐 Website Order'],
         ['🚀 Promote App/Website', '🗂️ Order History']
-      ])
-        .resize()
-        .oneTime()
+      ]).resize()
     });
-  }, 1000);
+  }, 800);
 });
 
-// Handle Menu Options
+// Menu Handlers
 bot.hears('📱 App Order', (ctx) => showAppOptions(ctx));
 bot.hears('🌐 Website Order', (ctx) => showWebsiteOptions(ctx));
 bot.hears('🚀 Promote App/Website', (ctx) => showPromoteOptions(ctx));
 bot.hears('🗂️ Order History', (ctx) => showOrderHistory(ctx));
+bot.hears('Cancel', (ctx) => cancelOrder(ctx));
 
-// Show App options
+// App Options
 async function showAppOptions(ctx) {
-  await ctx.replyWithChatAction('typing');
-  setTimeout(async () => {
-    await ctx.reply(`📱 *Choose an App for Order:*\n\n- APP-1: yourapplink.com - Price: 2500\n- APP-2: yourapplink.com - Price: 3500\n- APP-3: yourapplink.com - Price: 5000\n- APP-4: yourapplink.com - Price: 7000`, {
-      parse_mode: 'Markdown',
-      ...Markup.keyboard([
-        ['APP-1', 'APP-2'],
-        ['APP-3', 'APP-4'],
-        ['Cancel']
-      ])
-        .resize()
-        .oneTime()
-    });
-  }, 700);
+  userSession.set(ctx.from.id, { type: 'App Order', step: 'waiting_for_name' });
+
+  await ctx.reply(`📱 *Choose your App:*\n\n- APP-1: yourapplink.com - 2500৳\n- APP-2: yourapplink.com - 3500৳\n- APP-3: yourapplink.com - 5000৳\n- APP-4: yourapplink.com - 7000৳`, {
+    parse_mode: 'Markdown',
+    ...Markup.keyboard([
+      ['APP-1', 'APP-2'],
+      ['APP-3', 'APP-4'],
+      ['Cancel']
+    ]).resize()
+  });
 }
 
-// Show Website options
+// Website Options
 async function showWebsiteOptions(ctx) {
-  await ctx.replyWithChatAction('typing');
-  setTimeout(async () => {
-    await ctx.reply(`🌐 *Choose a Website for Order:*\n\n- WEBSITE-1: yourweblink.com - Price: 3500\n- WEBSITE-2: yourweblink.com - Price: 4800\n- WEBSITE-3: yourweblink.com - Price: 5900`, {
-      parse_mode: 'Markdown',
-      ...Markup.keyboard([
-        ['WEBSITE-1', 'WEBSITE-2'],
-        ['WEBSITE-3'],
-        ['Cancel']
-      ])
-        .resize()
-        .oneTime()
-    });
-  }, 700);
+  userSession.set(ctx.from.id, { type: 'Website Order', step: 'waiting_for_name' });
+
+  await ctx.reply(`🌐 *Choose your Website:*\n\n- WEBSITE-1: yourweblink.com - 3500৳\n- WEBSITE-2: yourweblink.com - 4800৳\n- WEBSITE-3: yourweblink.com - 5900৳`, {
+    parse_mode: 'Markdown',
+    ...Markup.keyboard([
+      ['WEBSITE-1', 'WEBSITE-2'],
+      ['WEBSITE-3'],
+      ['Cancel']
+    ]).resize()
+  });
 }
 
-// Show Promote options
+// Promote Options
 async function showPromoteOptions(ctx) {
-  await ctx.replyWithChatAction('typing');
-  setTimeout(async () => {
-    await ctx.reply(`🚀 *Choose a Promotion Plan:*\n\n- PROMOT-1: 500 Targeted Customers - Price: 700\n- PROMOT-2: 1000 Targeted Customers - Price: 1300\n- PROMOT-3: 1500 Targeted Customers - Price: 1800`, {
-      parse_mode: 'Markdown',
-      ...Markup.keyboard([
-        ['PROMOT-1', 'PROMOT-2'],
-        ['PROMOT-3'],
-        ['Cancel']
-      ])
-        .resize()
-        .oneTime()
-    });
-  }, 700);
+  userSession.set(ctx.from.id, { type: 'Promotion Order', step: 'waiting_for_name' });
+
+  await ctx.reply(`🚀 *Choose Promotion Plan:*\n\n- PROMOT-1: 500 Customers - 700৳\n- PROMOT-2: 1000 Customers - 1300৳\n- PROMOT-3: 1500 Customers - 1800৳`, {
+    parse_mode: 'Markdown',
+    ...Markup.keyboard([
+      ['PROMOT-1', 'PROMOT-2'],
+      ['PROMOT-3'],
+      ['Cancel']
+    ]).resize()
+  });
 }
 
-// Handle Order History
+// Cancel Handler
+async function cancelOrder(ctx) {
+  userSession.delete(ctx.from.id);
+  await ctx.reply('❌ Your order has been cancelled.', Markup.removeKeyboard());
+}
+
+// Show Order History
 async function showOrderHistory(ctx) {
   const userId = ctx.from.id;
   const ordersRef = collection(db, 'orders');
   const q = query(ordersRef, where('userId', '==', userId));
-  const querySnapshot = await getDocs(q);
+  const snapshot = await getDocs(q);
 
-  if (querySnapshot.empty) {
+  if (snapshot.empty) {
     await ctx.reply('❌ You have no previous orders.');
   } else {
-    let historyText = '🗂️ *Your Order History:*\n\n';
-    querySnapshot.forEach(doc => {
-      const order = doc.data();
-      historyText += `• Order Type: ${order.orderType}\n• Date: ${order.timestamp.toDate().toLocaleString()}\n\n`;
+    let history = '🗂️ *Your Orders:*\n\n';
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      history += `• *Type:* ${data.orderType}\n• *Payment:* ${data.paymentMethod}\n• *Date:* ${data.timestamp.toDate().toLocaleString()}\n\n`;
     });
-    await ctx.reply(historyText, { parse_mode: 'Markdown' });
+    await ctx.reply(history, { parse_mode: 'Markdown' });
   }
 }
 
-// User input for Order Details
+// Handle User Text Inputs
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const session = userSession.get(userId);
@@ -118,35 +114,60 @@ bot.on('text', async (ctx) => {
   if (session.step === 'waiting_for_name') {
     session.name = text;
     session.step = 'waiting_for_email';
-    await ctx.reply('📧 Please enter your *Email*:');
+    await ctx.reply('📧 Please enter your *Email*:', { parse_mode: 'Markdown' });
   } else if (session.step === 'waiting_for_email') {
     session.email = text;
     session.step = 'waiting_for_telegram';
-    await ctx.reply('💬 Please enter your *Telegram Number*:');
+    await ctx.reply('💬 Please enter your *Telegram Number*:', { parse_mode: 'Markdown' });
   } else if (session.step === 'waiting_for_telegram') {
     session.telegram = text;
     session.step = 'waiting_for_whatsapp';
-    await ctx.reply('📱 Please enter your *WhatsApp Number*:');
+    await ctx.reply('📱 Please enter your *WhatsApp Number*:', { parse_mode: 'Markdown' });
   } else if (session.step === 'waiting_for_whatsapp') {
     session.whatsapp = text;
-    session.step = 'completed';
+    session.step = 'waiting_for_payment';
+    await ctx.reply('💵 *Choose Payment Method:*', {
+      parse_mode: 'Markdown',
+      ...Markup.keyboard([
+        ['Bkash', 'Nagad'],
+        ['Rocket', 'Cash on Delivery'],
+        ['Cancel']
+      ]).resize()
+    });
+  } else if (session.step === 'waiting_for_payment') {
+    if (['Bkash', 'Nagad', 'Rocket', 'Cash on Delivery'].includes(text)) {
+      session.paymentMethod = text;
 
-    // Save order details to Firebase
-    const order = {
-      userId,
-      name: session.name,
-      email: session.email,
-      telegram: session.telegram,
-      whatsapp: session.whatsapp,
-      orderType: session.type,
-      timestamp: new Date()
-    };
+      // Save Order to Firebase
+      const orderData = {
+        userId: userId,
+        name: session.name,
+        email: session.email,
+        telegram: session.telegram,
+        whatsapp: session.whatsapp,
+        orderType: session.type,
+        paymentMethod: session.paymentMethod,
+        timestamp: new Date()
+      };
 
-    await addDoc(collection(db, 'orders'), order);
-    await ctx.reply('✅ *Order Confirmed!*\n\nThank you for your order. Please wait for confirmation.');
-    userSession.delete(userId);
+      await addDoc(collection(db, 'orders'), orderData);
+
+      await ctx.reply('✅ *Order Confirmed!*\n\nWe have received your order. Please wait for admin confirmation.', {
+        parse_mode: 'Markdown',
+        ...Markup.removeKeyboard()
+      });
+
+      // ✅ Send Notification to Admin
+      await bot.telegram.sendMessage(ADMIN_ID, `📥 *New Order Received!*\n\n👤 Name: ${session.name}\n📧 Email: ${session.email}\n💬 Telegram: ${session.telegram}\n📱 WhatsApp: ${session.whatsapp}\n🛒 Order Type: ${session.type}\n💵 Payment Method: ${session.paymentMethod}`, {
+        parse_mode: 'Markdown'
+      });
+
+      userSession.delete(userId);
+    } else {
+      await ctx.reply('❌ Invalid Payment Method. Please select from the keyboard options.');
+    }
   }
 });
 
-// Start the bot
+// Launch Bot
 bot.launch();
