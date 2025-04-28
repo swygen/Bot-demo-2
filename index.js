@@ -10,13 +10,18 @@ keepAlive();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ✅ তোমার Telegram Admin ID বসাও
+// ✅ তোমার Telegram Admin ID
 const ADMIN_ID = '6243881362';
 
 const userSession = new Map();
 
 // Start Command
 bot.start(async (ctx) => {
+  await sendMainMenu(ctx);
+});
+
+// Main Menu Function
+async function sendMainMenu(ctx) {
   await ctx.replyWithChatAction('typing');
   setTimeout(async () => {
     await ctx.reply(`✨ *Welcome to Premium Tournament Service Bot!* ✨\n\nPlease select an option:`, {
@@ -27,7 +32,7 @@ bot.start(async (ctx) => {
       ]).resize()
     });
   }, 800);
-});
+}
 
 // Menu Handlers
 bot.hears('📱 App Order', (ctx) => showAppOptions(ctx));
@@ -35,18 +40,17 @@ bot.hears('🌐 Website Order', (ctx) => showWebsiteOptions(ctx));
 bot.hears('🚀 Promote App/Website', (ctx) => showPromoteOptions(ctx));
 bot.hears('🗂️ Order History', (ctx) => showOrderHistory(ctx));
 bot.hears('Cancel', (ctx) => cancelOrder(ctx));
-bot.hears('Back to Main Menu', (ctx) => backToMainMenu(ctx));
+bot.hears('Back', (ctx) => handleBack(ctx));
 
 // App Options
 async function showAppOptions(ctx) {
   userSession.set(ctx.from.id, { type: 'App Order', step: 'waiting_for_name' });
-
   await ctx.reply(`📱 *Choose your App:*\n\n- APP-1: yourapplink.com - 2500৳\n- APP-2: yourapplink.com - 3500৳\n- APP-3: yourapplink.com - 5000৳\n- APP-4: yourapplink.com - 7000৳`, {
     parse_mode: 'Markdown',
     ...Markup.keyboard([
       ['APP-1', 'APP-2'],
       ['APP-3', 'APP-4'],
-      ['Cancel', 'Back to Main Menu']
+      ['Back', 'Cancel']
     ]).resize()
   });
 }
@@ -54,13 +58,12 @@ async function showAppOptions(ctx) {
 // Website Options
 async function showWebsiteOptions(ctx) {
   userSession.set(ctx.from.id, { type: 'Website Order', step: 'waiting_for_name' });
-
   await ctx.reply(`🌐 *Choose your Website:*\n\n- WEBSITE-1: yourweblink.com - 3500৳\n- WEBSITE-2: yourweblink.com - 4800৳\n- WEBSITE-3: yourweblink.com - 5900৳`, {
     parse_mode: 'Markdown',
     ...Markup.keyboard([
       ['WEBSITE-1', 'WEBSITE-2'],
       ['WEBSITE-3'],
-      ['Cancel', 'Back to Main Menu']
+      ['Back', 'Cancel']
     ]).resize()
   });
 }
@@ -68,13 +71,12 @@ async function showWebsiteOptions(ctx) {
 // Promote Options
 async function showPromoteOptions(ctx) {
   userSession.set(ctx.from.id, { type: 'Promotion Order', step: 'waiting_for_name' });
-
   await ctx.reply(`🚀 *Choose Promotion Plan:*\n\n- PROMOT-1: 500 Customers - 700৳\n- PROMOT-2: 1000 Customers - 1300৳\n- PROMOT-3: 1500 Customers - 1800৳`, {
     parse_mode: 'Markdown',
     ...Markup.keyboard([
       ['PROMOT-1', 'PROMOT-2'],
       ['PROMOT-3'],
-      ['Cancel', 'Back to Main Menu']
+      ['Back', 'Cancel']
     ]).resize()
   });
 }
@@ -83,21 +85,13 @@ async function showPromoteOptions(ctx) {
 async function cancelOrder(ctx) {
   userSession.delete(ctx.from.id);
   await ctx.reply('❌ Your order has been cancelled.', Markup.removeKeyboard());
+  await sendMainMenu(ctx);
 }
 
-// Back to Main Menu
-async function backToMainMenu(ctx) {
-  userSession.delete(ctx.from.id); // Reset session when returning to the main menu
-  await ctx.reply('🔙 Returning to the Main Menu...', Markup.removeKeyboard());
-  setTimeout(async () => {
-    await ctx.reply(`✨ *Welcome to Premium Tournament Service Bot!* ✨\n\nPlease select an option:`, {
-      parse_mode: 'Markdown',
-      ...Markup.keyboard([
-        ['📱 App Order', '🌐 Website Order'],
-        ['🚀 Promote App/Website', '🗂️ Order History']
-      ]).resize()
-    });
-  }, 800);
+// Back Handler
+async function handleBack(ctx) {
+  userSession.delete(ctx.from.id);
+  await sendMainMenu(ctx);
 }
 
 // Show Order History
@@ -119,7 +113,7 @@ async function showOrderHistory(ctx) {
   }
 }
 
-// Handle User Text Inputs
+// Handle User Inputs
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const session = userSession.get(userId);
@@ -131,30 +125,29 @@ bot.on('text', async (ctx) => {
   if (session.step === 'waiting_for_name') {
     session.name = text;
     session.step = 'waiting_for_email';
-    await ctx.reply('📧 Please enter your *Email*:', { parse_mode: 'Markdown' });
+    await ctx.reply('📧 Please enter your *Email*:', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
   } else if (session.step === 'waiting_for_email') {
     session.email = text;
     session.step = 'waiting_for_telegram';
-    await ctx.reply('💬 Please enter your *Telegram Number*:', { parse_mode: 'Markdown' });
+    await ctx.reply('💬 Please enter your *Telegram Number*:', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
   } else if (session.step === 'waiting_for_telegram') {
     session.telegram = text;
     session.step = 'waiting_for_whatsapp';
-    await ctx.reply('📱 Please enter your *WhatsApp Number*:', { parse_mode: 'Markdown' });
+    await ctx.reply('📱 Please enter your *WhatsApp Number*:', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
   } else if (session.step === 'waiting_for_whatsapp') {
     session.whatsapp = text;
     session.step = 'waiting_for_payment';
-    await ctx.reply('💵 *Choose Payment Method:*\n\n*বিকাশ*: 01318645435 (Send 2500৳ for APP-1)\n*নগদ*: 01855966005 (Send 3500৳ for WEBSITE-1)\n*রকেট*: 01829261192 (Send 5000৳ for APP-3)', {
+    await ctx.reply(`💵 *Choose Payment Method:*\n\n*Send the exact amount first!*\n\n- 2500৳ / 3500৳ / 5000৳ / 7000৳ অথবা আপনার প্রোমোশন প্যাক অনুযায়ী টাকা পাঠান।\n\n➡️ *Send Money Number:*\n\n*বিকাশ*: 01318645435\n*নগদ*: 01855966005\n*রকেট*: 01829261192`, {
       parse_mode: 'Markdown',
       ...Markup.keyboard([
         ['Bkash', 'Nagad'],
         ['Rocket', 'Cash on Delivery'],
-        ['Cancel']
+        ['Back', 'Cancel']
       ]).resize()
     });
   } else if (session.step === 'waiting_for_payment') {
     if (['Bkash', 'Nagad', 'Rocket', 'Cash on Delivery'].includes(text)) {
       session.paymentMethod = text;
-
       if (text === 'Cash on Delivery') {
         session.paymentStatus = 'Cash on Delivery';
         session.transactionId = 'N/A';
@@ -162,7 +155,7 @@ bot.on('text', async (ctx) => {
       } else {
         session.paymentStatus = 'Pending';
         session.step = 'waiting_for_transaction';
-        await ctx.reply('🧾 Please send your *Transaction ID* now:', { parse_mode: 'Markdown' });
+        await ctx.reply('🧾 Please enter your *Transaction ID* after sending payment:', { parse_mode: 'Markdown', ...Markup.keyboard([['Back', 'Cancel']]).resize() });
       }
     } else {
       await ctx.reply('❌ Invalid Payment Method. Please select from the keyboard.');
@@ -196,12 +189,17 @@ async function saveOrder(ctx, session) {
     ...Markup.removeKeyboard()
   });
 
-  // Send Notification to Admin
+  // Notify Admin
   await bot.telegram.sendMessage(ADMIN_ID, `📥 *New Order Received!*\n\n👤 *Name:* ${session.name}\n📧 *Email:* ${session.email}\n💬 *Telegram:* ${session.telegram}\n📱 *WhatsApp:* ${session.whatsapp}\n🛒 *Order Type:* ${session.type}\n💵 *Payment Method:* ${session.paymentMethod}\n📋 *Transaction ID:* ${session.transactionId}\n⚡ *Payment Status:* ${session.paymentStatus}`, {
     parse_mode: 'Markdown'
   });
 
   userSession.delete(ctx.from.id);
+
+  // Go back to Main Menu
+  setTimeout(() => {
+    sendMainMenu(ctx);
+  }, 1000);
 }
 
 // Launch Bot
