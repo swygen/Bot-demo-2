@@ -1,3 +1,4 @@
+// file: index.js
 import { Telegraf, Markup } from 'telegraf';
 import { config } from 'dotenv';
 import { db } from './firebase.js';
@@ -9,8 +10,8 @@ keepAlive();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ✅ এখানে তোমার Admin Telegram User ID বসাও
-const ADMIN_ID = 'তোমার_টেলিগ্রাম_ইউজার_আইডি'; 
+// ✅ তোমার Telegram Admin ID বসাও
+const ADMIN_ID = '6243881362';
 
 const userSession = new Map();
 
@@ -96,7 +97,7 @@ async function showOrderHistory(ctx) {
     let history = '🗂️ *Your Orders:*\n\n';
     snapshot.forEach(doc => {
       const data = doc.data();
-      history += `• *Type:* ${data.orderType}\n• *Payment:* ${data.paymentMethod}\n• *Date:* ${data.timestamp.toDate().toLocaleString()}\n\n`;
+      history += `• *Type:* ${data.orderType}\n• *Payment:* ${data.paymentMethod}\n• *Payment Status:* ${data.paymentStatus}\n• *Date:* ${data.timestamp.toDate().toLocaleString()}\n\n`;
     });
     await ctx.reply(history, { parse_mode: 'Markdown' });
   }
@@ -126,7 +127,7 @@ bot.on('text', async (ctx) => {
   } else if (session.step === 'waiting_for_whatsapp') {
     session.whatsapp = text;
     session.step = 'waiting_for_payment';
-    await ctx.reply('💵 *Choose Payment Method:*', {
+    await ctx.reply('💵 *Choose Payment Method:*\n\n*বিকাশ*: 01318645435\n*নগদ*: 01855966005\n*রকেট*: 01829261192', {
       parse_mode: 'Markdown',
       ...Markup.keyboard([
         ['Bkash', 'Nagad'],
@@ -138,36 +139,54 @@ bot.on('text', async (ctx) => {
     if (['Bkash', 'Nagad', 'Rocket', 'Cash on Delivery'].includes(text)) {
       session.paymentMethod = text;
 
-      // Save Order to Firebase
-      const orderData = {
-        userId: userId,
-        name: session.name,
-        email: session.email,
-        telegram: session.telegram,
-        whatsapp: session.whatsapp,
-        orderType: session.type,
-        paymentMethod: session.paymentMethod,
-        timestamp: new Date()
-      };
-
-      await addDoc(collection(db, 'orders'), orderData);
-
-      await ctx.reply('✅ *Order Confirmed!*\n\nWe have received your order. Please wait for admin confirmation.', {
-        parse_mode: 'Markdown',
-        ...Markup.removeKeyboard()
-      });
-
-      // ✅ Send Notification to Admin
-      await bot.telegram.sendMessage(ADMIN_ID, `📥 *New Order Received!*\n\n👤 Name: ${session.name}\n📧 Email: ${session.email}\n💬 Telegram: ${session.telegram}\n📱 WhatsApp: ${session.whatsapp}\n🛒 Order Type: ${session.type}\n💵 Payment Method: ${session.paymentMethod}`, {
-        parse_mode: 'Markdown'
-      });
-
-      userSession.delete(userId);
+      if (text === 'Cash on Delivery') {
+        session.paymentStatus = 'Cash on Delivery';
+        session.transactionId = 'N/A';
+        await saveOrder(ctx, session);
+      } else {
+        session.paymentStatus = 'Pending';
+        session.step = 'waiting_for_transaction';
+        await ctx.reply('🧾 Please send your *Transaction ID* now:', { parse_mode: 'Markdown' });
+      }
     } else {
-      await ctx.reply('❌ Invalid Payment Method. Please select from the keyboard options.');
+      await ctx.reply('❌ Invalid Payment Method. Please select from the keyboard.');
     }
+  } else if (session.step === 'waiting_for_transaction') {
+    session.transactionId = text;
+    session.paymentStatus = 'Paid';
+    await saveOrder(ctx, session);
   }
 });
+
+// Save Order to Firestore
+async function saveOrder(ctx, session) {
+  const orderData = {
+    userId: ctx.from.id,
+    name: session.name,
+    email: session.email,
+    telegram: session.telegram,
+    whatsapp: session.whatsapp,
+    orderType: session.type,
+    paymentMethod: session.paymentMethod,
+    paymentStatus: session.paymentStatus,
+    transactionId: session.transactionId,
+    timestamp: new Date()
+  };
+
+  await addDoc(collection(db, 'orders'), orderData);
+
+  await ctx.reply('✅ *Order Confirmed!*\n\nWe have received your order. Please wait for admin confirmation.', {
+    parse_mode: 'Markdown',
+    ...Markup.removeKeyboard()
+  });
+
+  // Send Notification to Admin
+  await bot.telegram.sendMessage(ADMIN_ID, `📥 *New Order Received!*\n\n👤 *Name:* ${session.name}\n📧 *Email:* ${session.email}\n💬 *Telegram:* ${session.telegram}\n📱 *WhatsApp:* ${session.whatsapp}\n🛒 *Order Type:* ${session.type}\n💵 *Payment Method:* ${session.paymentMethod}\n📋 *Transaction ID:* ${session.transactionId}\n⚡ *Payment Status:* ${session.paymentStatus}`, {
+    parse_mode: 'Markdown'
+  });
+
+  userSession.delete(ctx.from.id);
+}
 
 // Launch Bot
 bot.launch();
